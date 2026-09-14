@@ -1,35 +1,34 @@
 #include <Arduino.h>
 #include <DHTesp.h>
 
-#define DHTPIN 2  // Connected to physical pin IO4 on ESP32-C3 SuperMini
+#define DHTPIN 2  // DATA pin on DHT22 is connected to Pin 2
 
 DHTesp dht;
 
-void setup() {
+void setup() 
+{
   Serial.begin(115200);
 
-  // Wait up to 3 seconds for Serial Monitor connection
+  // Wait for connection between Serial Monitor and ESP32
   unsigned long start = millis();
-  while (!Serial && (millis() - start < 3000)) {
+  while (!Serial && (millis() - start < 3000))  // Makes sure Serial is connected, but will still run after 3 seconds
+  {
     delay(10);
   }
 
-  Serial.println("\n--- ESP32-C3 DHT22 Initialization ---");
+  Serial.println("--- ESP32-C3 DHT22 Initialization ---");
 
-  // Force ESP32 internal pull-up resistor on GPIO 4
-  pinMode(DHTPIN, INPUT_PULLUP);
+  pinMode(DHTPIN, INPUT_PULLUP);  // Suppresses noise
   delay(100);
 
   // Initialize DHTesp
   dht.setup(DHTPIN, DHTesp::DHT22);
-  
-  // Allow sensor power rail to stabilize
-  delay(2000);
+  Serial.println("Setup Complete");
+  delay(2000);  // Wait to make sure setup is complete
 }
 
 void loop() {
-  // DHT22 sampling interval must be at least 2000ms
-  delay(2000);
+  delay(3000);  // Wait for DHT22 to take reading
 
   TempAndHumidity data = dht.getTempAndHumidity();
 
