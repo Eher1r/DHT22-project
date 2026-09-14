@@ -9,9 +9,10 @@ DHT dht(DHTPIN, DHTTYPE);  // Creates DHT object for future use
 void setup()
 {
   Serial.begin(115200);
-  
-  // Wait for connection
-  while (!Serial)
+  delay(1000);
+
+  unsigned long start = millis();
+  while (!Serial && (millis() - start < 4000))
   {
     delay(100);
   }
