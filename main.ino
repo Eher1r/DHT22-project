@@ -22,9 +22,12 @@ void setup()
   dht.begin();
 }
 
+const unsigned int run = millis();  // Time initialization begun
+
 void loop()
 {
   delay(3000);  // 3 seconds for the DHT22 to take in the reading
+  unsigned int time = millis() - run;  // Time after initializing, the reading was taken
 
   float humidity = dht.readHumidity();
   float temp = dht.readTemperature();
@@ -37,5 +40,5 @@ void loop()
   }
 
   // Print reading out
-  Serial.printf("Humidity: %f%  |  Temperature: %f°C\n", humidity, temp);
+  Serial.printf("%.1fs : Humidity: %f%  |  Temperature: %f°C\n", (time / 1000.0), humidity, temp);
 }
