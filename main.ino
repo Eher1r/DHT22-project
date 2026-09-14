@@ -33,7 +33,8 @@ void loop() {
   TempAndHumidity data = dht.getTempAndHumidity();
 
   // Check read status
-  if (dht.getStatus() != DHTesp::ERROR_NONE) {
+  if (dht.getStatus() != DHTesp::ERROR_NONE) 
+  {
     Serial.print("Sensor Error: ");
     Serial.println(dht.getStatusString());
     return;
