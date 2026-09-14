@@ -1,40 +1,45 @@
 #include <Arduino.h>
-#include <DHT.h>  // DHT sensor library
+#include <DHTesp.h>
 
-#define DHTPIN 4  // Pin on ESP connected to DATA pin on DHT22
-#define DHTTYPE DHT22  // Type of DHT sensor defined
+#define DHTPIN 2  // Connected to physical pin IO4 on ESP32-C3 SuperMini
 
-DHT dht(DHTPIN, DHTTYPE);  // Creates DHT object for future use
+DHTesp dht;
 
-void setup()
-{
+void setup() {
   Serial.begin(115200);
-  
-  // Wait for connection
-  while (!Serial)
-  {
-    delay(100);
-  }
-  Serial.println("Connected!");
 
-  delay(1500);
-  dht.begin();
+  // Wait up to 3 seconds for Serial Monitor connection
+  unsigned long start = millis();
+  while (!Serial && (millis() - start < 3000)) {
+    delay(10);
+  }
+
+  Serial.println("\n--- ESP32-C3 DHT22 Initialization ---");
+
+  // Force ESP32 internal pull-up resistor on GPIO 4
+  pinMode(DHTPIN, INPUT_PULLUP);
+  delay(100);
+
+  // Initialize DHTesp
+  dht.setup(DHTPIN, DHTesp::DHT22);
+  
+  // Allow sensor power rail to stabilize
+  delay(2000);
 }
 
-void loop()
-{
-  delay(2000);  // 2 seconds for the DHT22 to take in the reading
+void loop() {
+  // DHT22 sampling interval must be at least 2000ms
+  delay(2000);
 
-  float humidity = dht.readHumidity();
-  float temp = dht.readTemperature();
+  TempAndHumidity data = dht.getTempAndHumidity();
 
-  // Error checking
-  if (isnan(humidity) || isnan(temp))
-  {
-    Serial.println("Failed to read from DHT sensor!");
+  // Check read status
+  if (dht.getStatus() != DHTesp::ERROR_NONE) {
+    Serial.print("Sensor Error: ");
+    Serial.println(dht.getStatusString());
     return;
   }
 
-  // Print reading out
-  Serial.printf("Humidity: %f%  |  Temperature: %f°C\n", humidity, temp);
+  // Print formatted output
+  Serial.printf("Humidity: %.1f%%  |  Temperature: %.1f°C\n", data.humidity, data.temperature);
 }
