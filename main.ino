@@ -15,15 +15,15 @@ void setup()
   {
     delay(100);
   }
-  Serial.println("Connected!");
-
+  
+  Serial.println("--- ESP32-C3 DHT22 Initialization ---");
   delay(1500);
   dht.begin();
 }
 
 void loop()
 {
-  delay(2000);  // 2 seconds for the DHT22 to take in the reading
+  delay(3000);  // 3 seconds for the DHT22 to take in the reading
 
   float humidity = dht.readHumidity();
   float temp = dht.readTemperature();
