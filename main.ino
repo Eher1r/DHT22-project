@@ -1,7 +1,7 @@
 #include <Arduino.h>
 #include <DHTesp.h>
 
-#define DHTPIN 2  // DATA pin on DHT22 is connected to Pin 2
+#define DHTPIN 4  // DATA pin on DHT22 is connected to Pin 2
 
 DHTesp dht;
 
@@ -27,7 +27,8 @@ void setup()
   delay(2000);  // Wait to make sure setup is complete
 }
 
-void loop() {
+void loop() 
+{
   delay(3000);  // Wait for DHT22 to take reading
 
   TempAndHumidity data = dht.getTempAndHumidity();
