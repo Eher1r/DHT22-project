@@ -132,6 +132,7 @@ void loop()
       }
     }
   }
+  last_Button_State = reading;
 }
 
 
