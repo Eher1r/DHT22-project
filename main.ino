@@ -4,6 +4,9 @@
 #include <DHT.h>  // DHT sensor library
 #include <Wire.h>
 
+int Gen_snpp(int type, char* destination, int size, float reading);
+void printCentered(char* text, int y, unsigned int size);
+
 // DHT22 Sensor
 #define DHTPIN 4  // Pin on ESP connected to DATA pin on DHT22
 #define DHTTYPE DHT22  // Type of DHT sensor defined
@@ -55,7 +58,6 @@ void loop()
   
   // CLears display and define variable
   display.clearDisplay();
-  display.setCursor(32, 0);
   bool error = false;
   int needed;
   int length;
@@ -94,16 +96,14 @@ void loop()
       error = true;
     }
 
-    // Create corresponding result variable
+    char result[(needed + 1)];  // Include null terminator
     if (i == 0)
     {
-      char result0[(needed + 1)];  // Include null terminator
-      length = Gen_snpp(i, result0, sizeof(result0), humidity);
+      length = Gen_snpp(i, result, sizeof(result), humidity);
     }
     else if (i == 1)
     {
-      char result1[(needed + 1)];
-      length = Gen_snpp(i, result1, sizeof(result1), temp);
+      length = Gen_snpp(i, result, sizeof(result), temp);
     }
     else
     {
@@ -115,19 +115,22 @@ void loop()
     {
       error = true;
     }
-  }
+
+    if (!error)
+    { 
+      if (i == 0)
+        printCentered(result, 22, 1);
+      else
+        printCentered(result, 34, 1);
+      
+      display.display();
+      Serial.printf("%.1f | Displayed\n", (time / 1000.0));
+    }
+    else
+    {
+      Serial.println("Error displaying text :(");
+    }
   
-  // Print reading out
-  if (!error)
-  {  
-    printCentered(result0, 22, 1);
-    printCentered(result1, 34, 1);
-    display.display();
-    Serial.printf("%.1fs : %s  |  %s\n", (time / 1000.0), result0, result1);
-  }
-  else
-  {
-    Serial.println("Error displaying text :(");
   }
 }
 
@@ -136,11 +139,27 @@ int Gen_snpp(int type, char* destination, int size, float reading)
 {
   if (type == 0)
   {
-    return snprintf(destination, size, "Humidity: %.3f%%", reading);
+    return snprintf(destination, size, "Humidity: %.1f%%", reading);
   }
   else if (type == 1)
   {
-    return snprintf(destination, size, "Temperature: %.3fC", reading);
+    return snprintf(destination, size, "Temperature: %.1fC", reading);
   }
   return -1;  // Both conditions above failed to run
+}
+
+void printCentered(char* text, int y, unsigned int size)
+{
+  // Variables used later on
+  int16_t x1;
+  int16_t y1;
+  uint16_t w;
+  uint16_t h;
+
+  display.setTextSize(size);
+  display.getTextBounds(text, 0, 0, &x1, &y1, &w, &h);
+
+  int x = (SCREEN_WIDTH - w) / 2;
+  display.setCursor(x, y);
+  display.print(text);
 }
