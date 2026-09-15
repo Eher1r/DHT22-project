@@ -12,6 +12,7 @@ int update_Toggle(int num);
 void display012(void);
 void startDeepSleep(void);
 void startAnimation(const char* label, int duration);
+void shutdownAnimation();
 
 // DHT22 Sensor
 #define DHTPIN 4  // Pin on ESP connected to DATA pin on DHT22
@@ -225,6 +226,7 @@ void startDeepSleep(void)
 {
   // Trun off OLED
   display.clearDisplay();
+  shutdownAnimation();
   display.display();
   display.ssd1306_command(SSD1306_DISPLAYOFF);
 
@@ -274,5 +276,33 @@ void startAnimation(const char* label, int duration)
     display.display();
     delay(delayPerStep);
   }
-  delay(200); // Brief pause
+  delay(200);
+}
+
+void shutdownAnimation()
+{
+  int centerX = SCREEN_WIDTH / 2;
+  int centerY = SCREEN_HEIGHT / 2;
+
+  // Screen squashes down into horizontal line
+  for (int h = SCREEN_HEIGHT / 2; h > 1; h -= 2) {
+    display.clearDisplay();
+    display.fillRect(0, centerY - h, SCREEN_WIDTH, h * 2, SSD1306_WHITE);
+    display.display();
+    delay(15);
+  }
+
+  // Line shrinks into dot)
+  for (int w = SCREEN_WIDTH / 2; w > 2; w -= 4) {
+    display.clearDisplay();
+    display.fillRect(centerX - w, centerY - 1, w * 2, 2, SSD1306_WHITE);
+    display.display();
+    delay(10);
+  }
+
+  // Flash and fade dot
+  display.clearDisplay();
+  display.fillCircle(centerX, centerY, 2, SSD1306_WHITE);
+  display.display();
+  delay(100);
 }
