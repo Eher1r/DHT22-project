@@ -6,6 +6,8 @@
 
 int Gen_snpp(int type, char* destination, int size, float reading);
 void printCentered(char* text, int y, unsigned int size);
+int update_Toggle(int num);
+void display012(void);
 
 // DHT22 Sensor
 #define DHTPIN 4  // Pin on ESP connected to DATA pin on DHT22
@@ -19,14 +21,26 @@ void printCentered(char* text, int y, unsigned int size);
 #define SDA_PIN 8
 #define SCL_PIN 9
 
+// Buttons
+#define BUTTON_PIN 7
+
 DHT dht(DHTPIN, DHTTYPE);  // Object for DHT22
 Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);  // Object for OLED
+
+// Global variables
+char resultH[32];
+char resultT[32];
+bool error;
+int button_State = HIGH;
+int last_Button_State = HIGH;
+unsigned long last_Click_Time = 0;
+const unsigned long click_Delay = 50;
+int button_Toggle = 0;
 
 void setup()
 {
   // Start stuff up
   Serial.begin(115200);
-  Wire.begin(SDA_PIN, SCL_PIN);
   delay(1000);
 
   unsigned long start = millis();
@@ -43,99 +57,88 @@ void setup()
 
   Serial.println("--- ESP32-C3 DHT22 Project Initialization ---");
 
-  // OLED screen settings
+  // Start stuff up
+  dht.begin();
+  Wire.begin(SDA_PIN, SCL_PIN);
+  pinMode(BUTTON_PIN, INPUT_PULLUP);
+
+  // Settings
   display.setTextColor(SSD1306_WHITE);
 
-  delay(1500);
-  dht.begin();
+  delay(1500); // You Ready?
 }
 
-const unsigned int run = millis();  // Time initialization begun
+
+// Measure running time for counting when the DHT22 would take the reading
+const unsigned long run = millis();
+const unsigned long reading_pause = 5000;
+unsigned long current_time;
+unsigned long last_time = 0;
 
 void loop()
 {
-  delay(3000);  // 3 seconds for the DHT22 to take in the reading
-  
-  // CLears display and define variable
-  display.clearDisplay();
-  bool error = false;
-  int needed;
-  int length;
-
-  unsigned int time = millis() - run;  // Time after initializing, the reading was taken
-
-  float humidity = dht.readHumidity();
-  float temp = dht.readTemperature();
-
-  // Error checking
-  if (isnan(humidity) || isnan(temp))
+  // Check if it is time to take the reading
+  unsigned long current_time = millis() - run;
+  error = false; // For error checking
+  if (current_time - last_time >= reading_pause)
   {
-    Serial.println("Failed to read from DHT sensor!");
-    return;
-  }
+    // Define variable
+    int lengthH;
+    int lengthT;
 
-  for (int i = 0; i < 2; i++)
-  {
-    // Get size of message
-    if (i == 0)
-    {
-      needed = Gen_snpp(i, NULL, 0, humidity);
-    }
-    else if (i == 1)
-    {
-      needed = Gen_snpp(i, NULL, 0, temp);
-    }
-    else
-    {
-      needed = -1;
-    }
+    unsigned int reading_time = millis() - run;  // Time after initializing, the reading was taken
+    last_time = millis() - run;
+
+    // Take readings
+    float humidity = dht.readHumidity();
+    float temp = dht.readTemperature();
 
     // Error checking
-    if (needed <= 0 || needed > 168)
+    if (isnan(humidity) || isnan(temp))
     {
-      error = true;
+      Serial.println("Failed to read from DHT sensor!");
+      return;
     }
 
-    char result[(needed + 1)];  // Include null terminator
-    if (i == 0)
-    {
-      length = Gen_snpp(i, result, sizeof(result), humidity);
-    }
-    else if (i == 1)
-    {
-      length = Gen_snpp(i, result, sizeof(result), temp);
-    }
-    else
-    {
-      length = -1;
-    }
+    lengthH = Gen_snpp(0, resultH, sizeof(resultH), humidity);
+    lengthT = Gen_snpp(1, resultT, sizeof(resultT), temp);
     
     // Error checking
-    if (length <= 0 || length > 168)
+    if (lengthH <= 0 || lengthT <= 0 || lengthH > 168 || lengthT > 168)
     {
       error = true;
     }
 
-    if (!error)
-    { 
-      if (i == 0)
-        printCentered(result, 22, 1);
-      else
-        printCentered(result, 34, 1);
-      
-      display.display();
-      Serial.printf("%.1f | Displayed\n", (time / 1000.0));
-    }
-    else
+    display012();
+  }
+
+  // Button code
+  int reading = digitalRead(BUTTON_PIN);
+  int c = 0;
+  if (reading != last_Button_State)
+  {
+    last_Click_Time = millis();
+  }
+
+  if ((millis() - last_Click_Time) > click_Delay)
+  {
+    if (reading != button_State)
     {
-      Serial.println("Error displaying text :(");
+      button_State = reading;
+      if (button_State == LOW)
+      {
+        button_Toggle = update_Toggle(button_Toggle);
+        display012();
+      }
     }
-  
   }
 }
 
-// snprintf for Humidity and Temperature respectively
-int Gen_snpp(int type, char* destination, int size, float reading)
+
+// -------| Function Definitions |-------
+
+
+int Gen_snpp(int type, char* destination, int size, float reading)  // snprintf for Humidity and Temperature respectively
 {
   if (type == 0)
   {
@@ -148,18 +151,58 @@ int Gen_snpp(int type, char* destination, int size, float reading)
   return -1;  // Both conditions above failed to run
 }
 
-void printCentered(char* text, int y, unsigned int size)
+void printCentered(char* text, int y, unsigned int size)  // Centers the text and prints it out
 {
-  // Variables used later on
+  // Variables used in .getTextBounds
   int16_t x1;
   int16_t y1;
-  uint16_t w;
-  uint16_t h;
+  uint16_t width;
+  uint16_t height;
 
   display.setTextSize(size);
-  display.getTextBounds(text, 0, 0, &x1, &y1, &w, &h);
+  display.getTextBounds(text, 0, 0, &x1, &y1, &width, &height);
 
-  int x = (SCREEN_WIDTH - w) / 2;
+  int x = (SCREEN_WIDTH - width) / 2;  // Calculate the start point which allow text to be centered
   display.setCursor(x, y);
   display.print(text);
+}
+
+int update_Toggle(int num)
+{
+  if (num == 0 || num == 1)
+  {
+    return (num + 1);
+  }
+  else if (num == 2)
+  {
+    return 0;
+  }
+  else
+  {
+    return -1;
+  }
+}
+
+void display012(void)
+{
+  display.clearDisplay();
+  if (button_Toggle == 0)  // Both Humidity and Temperature
+  {
+    printCentered(resultH, 22, 1);
+    printCentered(resultT, 34, 1);
+  }
+  else if (button_Toggle == 1)  // Just Temperature
+  {
+    printCentered(resultT, 28, 1);
+  }
+  else if (button_Toggle == 2)  // Just Humidity
+  {
+    printCentered(resultH, 28, 1);
+  }
+  else
+  {
+    display.println("Error on displaying Temperature/Humidity");
+  }
+  display.display();
+  Serial.printf("Displayed\n");
 }
