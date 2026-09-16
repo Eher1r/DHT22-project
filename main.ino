@@ -128,7 +128,6 @@ void loop()
 
   // Button1 code
   int reading = digitalRead(BUTTON_PIN1);
-  int c = 0;
   if (reading != last_Button_State)
   {
     last_Click_Time = millis();
