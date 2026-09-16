@@ -27,22 +27,38 @@ void shutdownAnimation();
 #define SCL_PIN 9
 
 // Buttons
-#define BUTTON_PIN1 7
-#define BUTTON_PIN2 2
+#define BUTTON_PIN11 7  // Up button
+#define BUTTON_PIN12 10  // Enter button
+#define BUTTON_PIN13 6  // Down button
+#define BUTTON_PIN21 2  // Shutdown/Turn On button
+#define BUTTON_PIN22 3  // Toggle button
 
 DHT dht(DHTPIN, DHTTYPE);  // Object for DHT22
 Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);  // Object for OLED
 // Sleep objects
-OneButton button(BUTTON_PIN2, true);
+OneButton button(BUTTON_PIN2_1, true);
 
 // Global variables
 char resultH[32];
 char resultT[32];
-bool error;
-int button_State = HIGH;
-int last_Button_State = HIGH;
-unsigned long last_Click_Time = 0;
 const unsigned long click_Delay = 50;
+bool error;
+
+int button_State11 = HIGH;
+int last_Button_State11 = HIGH;
+unsigned long last_Click_Time11 = 0;
+
+int button_State12 = HIGH;
+int last_Button_State12 = HIGH;
+unsigned long last_Click_Time12 = 0;
+
+int button_State13 = HIGH;
+int last_Button_State13 = HIGH;
+unsigned long last_Click_Time13 = 0;
+
+int button_State22 = HIGH;
+int last_Button_State22 = HIGH;
+unsigned long last_Click_Time22 = 0;
 int button_Toggle = 0;
 
 void setup()
@@ -69,8 +85,11 @@ void setup()
   // Start stuff up
   dht.begin();
   Wire.begin(SDA_PIN, SCL_PIN);
-  pinMode(BUTTON_PIN1, INPUT_PULLUP);
-  pinMode(BUTTON_PIN2, INPUT_PULLUP);
+  pinMode(BUTTON_PIN11, INPUT_PULLUP);
+  pinMode(BUTTON_PIN12, INPUT_PULLUP);
+  pinMode(BUTTON_PIN13, INPUT_PULLUP);
+  pinMode(BUTTON_PIN21, INPUT_PULLUP);
+  pinMode(BUTTON_PIN22, INPUT_PULLUP);
 
   // Settings
   display.setTextColor(SSD1306_WHITE);
@@ -126,26 +145,62 @@ void loop()
     display012();
   }
 
-  // Button1 code
-  int reading = digitalRead(BUTTON_PIN1);
-  if (reading != last_Button_State)
+  // Button11 code
+  int reading11 = digitalRead(BUTTON_PIN11);
+  if (reading11 != last_Button_State11)
+    last_Click_Time11 = millis();
+
+  if ((millis() - last_Click_Time11) > click_Delay)
   {
-    last_Click_Time = millis();
+    if (reading11 != button_State11)
+    {
+      button_State11 = reading11;
+      if (button_State11 == LOW)
+      {
+        ...
+      }
+    }
   }
 
-  if ((millis() - last_Click_Time) > click_Delay)
+  // Button12 code
+  int reading12 = digitalRead(BUTTON_PIN12);
+  if (reading12 != last_Button_State12)
+    last_Click_Time12 = millis();
+
+  if ((millis() - last_Click_Time12) > click_Delay)
   {
-    if (reading != button_State)
+    if (reading12 != button_State12)
     {
-      button_State = reading;
-      if (button_State == LOW)
+      button_State12 = reading12;
+      if (button_State12 == LOW)
+      {
+        ...
+      }
+    }
+  }
+
+  // Button22
+  int reading22 = digitalRead(BUTTON_PIN22);
+  if (reading22 != last_Button_State22)
+    last_Click_Time22 = millis();
+
+  if ((millis() - last_Click_Time22) > click_Delay)
+  {
+    if (reading22 != button_State22)
+    {
+      button_State22 = reading22;
+      if (button_State22 == LOW)
       {
         button_Toggle = update_Toggle(button_Toggle);
         display012();
       }
     }
   }
-  last_Button_State = reading;
+
+  last_Button_State11 = reading11;
+  last_Button_State12 = reading12;
+  last_Button_State13 = reading13;
+  last_Button_State22 = reading22;
 }
 
 
@@ -218,7 +273,6 @@ void display012(void)
     display.println("Error on displaying Temperature/Humidity");
   }
   display.display();
-  Serial.printf("Displayed\n");
 }
 
 void startDeepSleep(void)
