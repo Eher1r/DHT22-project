@@ -44,6 +44,14 @@ I coded the initial button logic, which checks what is considered as a click and
 ### Phase 4: Creating a product (2 days)
 Next a PCB had to be designed, along with a well-drawn CAD model to enclose the device.
 
+The Schematic and PCB are uploaded to this repo, where you can check. Unfortunately, I was unable to finish the CAD model for the device before the deadline. So unfortunately the CAD file wouldn't be uploaded.
+
+I had to learn how to design a PCB. Even though it sounded straight forward, schematic --> Wire stuff up --> Done! :), underneath there are countless areas where an error could pop up and fry your brain for the next 30 minutes trying to fix it.
+
+I had to change the schematic from physical wiring to using net labels (idk is it called that), going through the search component tab, testing out different filters to find the type of button / OLED display I wanted, and trying to use the copper layer to connect all the GND pins.
+
+For CAD, I already know how to design, so I don't expect the same amount of strain, mentally, emotionally and spiritually.
+
 ## Self-reflection
 This project is my first hardware project. Even though it might sound easy to create such a device, inside there are layers of knowledge that need to be uncovered. This project was made possible mainly because of Gemini, who guided me through mistakes and provided solutions. At the start I learned and understood all its code and commands before executing, but at the end due to time constraints, I had no choice but to copy and paste. 
 
@@ -52,3 +60,11 @@ Talking about what I learned, there's really a full list. Let me display it as a
 * Different pins on the ESP32C3 and their usage
 * Breadboard usage
 * C/C++ Code for components like OLED display, buttons, DHT22 and Serial Monitor
+* GitHub commands
+* How to draw and design PCBs
+* Simple markdown
+* Being patient when problem occurs
+* Not giving up easily
+* Persevering though bus and a strong urge to go to bed
+
+I appreciate the ROV Team for providing me with this opportunity to challenge myself, learn new skills, and steal hours of my sleep away :)
