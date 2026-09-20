@@ -45,3 +45,10 @@ I coded the initial button logic, which checks what is considered as a click and
 Next a PCB had to be designed, along with a well-drawn CAD model to enclose the device.
 
 ## Self-reflection
+This project is my first hardware project. Even though it might sound easy to create such a device, inside there are layers of knowledge that need to be uncovered. This project was made possible mainly because of Gemini, who guided me through mistakes and provided solutions. At the start I learned and understood all its code and commands before executing, but at the end due to time constraints, I had no choice but to copy and paste. 
+
+Talking about what I learned, there's really a full list. Let me display it as a list:
+* Arduino IDE Setup and How to Run Code
+* Different pins on the ESP32C3 and their usage
+* Breadboard usage
+* C/C++ Code for components like OLED display, buttons, DHT22 and Serial Monitor
