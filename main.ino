@@ -4,18 +4,22 @@
 #include <DHT.h>
 #include <LittleFS.h>
 #include <OneButton.h>
+#include <WebServer.h>
+#include <WiFi.h>
 #include <Wire.h>
 
 // Prototypes
+void recordData(float temp, float humidity, unsigned long timestamp);
+void renderUI(void);
 int Gen_snpp(int type, char* destination, int size, float reading);
 void printCentered(const char* text, int y, unsigned int size);
 int update_Toggle(int num);
 void display012(void);
-void renderUI(void);
+void handleFileDownload(void);
+void handleRoot(void);
 void startDeepSleep(void);
 void startAnimation(const char* label, int duration);
 void shutdownAnimation();
-void recordData(float temp, float humidity, unsigned long timestamp);
 
 // DHT22 Sensor
 #define DHTPIN 4
@@ -84,14 +88,17 @@ const unsigned long run = millis();
 const unsigned long reading_pause = 3000;
 unsigned long last_time = 0;
 
-void setup() {
-  Serial.begin(115200);
-  delay(1000);
+// Wi-Fi Credentials
+const char* ssid = "wahyi";
+const char* password = "wahyi1007";
 
-  unsigned long start = millis();
-  while (!Serial && (millis() - start < 4000)) {
-    delay(100);
-  }
+WebServer server(80); // Start HTTP web server on port 80
+
+void setup() {
+  // FIX FOR ESP32-C3 NATIVE USB CDC SERIAL MONITOR
+  Serial.begin(115200);
+  Serial.setTxTimeoutMs(0); // Prevents Serial.print blocking execution if terminal is closed
+  delay(2000);             // Give USB time to enumerate on Mac
 
   Wire.begin(SDA_PIN, SCL_PIN);
   
@@ -108,7 +115,7 @@ void setup() {
     Serial.println("LittleFS Mounted Successfully!");
   }
 
-  Serial.println("--- ESP32-C3 DHT22 Project Initialization ---");
+  Serial.println("\n--- ESP32-C3 DHT22 Project Initialization ---");
   startAnimation("LOADING...", 2500);
 
   dht.begin();
@@ -118,15 +125,59 @@ void setup() {
   pinMode(BUTTON_DOWN, INPUT_PULLUP);
   pinMode(BUTTON_ENTER, INPUT_PULLUP);
 
+  // --- CRITICAL ESP32-C3 WI-FI FIXES ---
+  WiFi.persistent(false);              
+  WiFi.mode(WIFI_STA);                 
+  WiFi.setSleep(false);                
+  WiFi.setTxPower(WIFI_POWER_8_5dBm);  
+  
+  WiFi.begin(ssid, password);
+  Serial.print("Connecting to WiFi");
+  
+  int wifiTimeout = 0;
+  while (WiFi.status() != WL_CONNECTED && wifiTimeout < 20) { 
+    delay(500);
+    Serial.print(".");
+    wifiTimeout++;
+  }
+
+  if (WiFi.status() == WL_CONNECTED) {
+    Serial.println("\nConnected to Home/Hotspot WiFi!");
+    Serial.print("IP Address: ");
+    Serial.println(WiFi.localIP());
+  } else {
+    // --- HOTSPOT FAILOVER MODE FOR ESP32-C3 ---
+    Serial.println("\nSTA Connection failed! Switching to Access Point (Hotspot) Mode...");
+    WiFi.mode(WIFI_AP);
+    WiFi.softAP("ESP32_Data_Server", "12345678"); 
+    Serial.println("----------------------------------------------");
+    Serial.println("Hotspot Created Successfully!");
+    Serial.println("1. Connect your Mac Wi-Fi to: ESP32_Data_Server");
+    Serial.println("2. Password: 12345678");
+    Serial.println("3. Open browser and go to: http://192.168.4.1");
+    Serial.println("----------------------------------------------");
+  }
+
+  // Setup Web Server Routes
+  server.on("/", handleRoot);
+  server.on("/download", handleFileDownload);
+  server.begin();
+  Serial.println("HTTP Web Server Started!");
+
   display.setTextColor(SSD1306_WHITE, SSD1306_BLACK);
   button.setPressMs(3000);
   button.attachLongPressStart(startDeepSleep);
   
-  delay(1500);
+  delay(500);
   renderUI();
 }
 
-void loop() {
+void loop()
+{
+  if (WiFi.status() == WL_CONNECTED || WiFi.getMode() == WIFI_MODE_AP) {
+    server.handleClient();
+  }
+  
   button.tick();
 
   // --- DHT22 Reading Routine ---
@@ -159,9 +210,9 @@ void loop() {
       button_State = readingToggle;
       if (button_State == LOW) {
         if (currentMenu == 1) {
-          currentMenu = 0; // Go back to Home Menu
+          currentMenu = 0; 
         } else {
-          currentMenu = 1; // Open Reading Page
+          currentMenu = 1; 
           button_Toggle = 0; 
         }
         cursorIndex = 0;
@@ -171,7 +222,6 @@ void loop() {
   }
   last_Button_State = readingToggle;
 
-  // Dynamic cursor bounds (Home Menu: 0-2; File Options: 0-3)
   int maxCursor = (currentMenu == 3) ? 3 : 2;
 
   // --- BUTTON: UP ---
@@ -217,20 +267,19 @@ void loop() {
           if (cursorIndex == 0) {
             isReadingActive = !isReadingActive;
           } else if (cursorIndex == 1) {
-            currentMenu = 2; // Go to History Page
+            currentMenu = 2; 
           } else if (cursorIndex == 2) {
-            currentMenu = 3; // Go to File Options Menu
+            currentMenu = 3; 
             cursorIndex = 0; 
           }
         } 
         // History Page Action
         else if (currentMenu == 2) { 
-          currentMenu = 0; // Any Enter press returns to Home Menu
+          currentMenu = 0; 
         } 
         // File Menu Actions
         else if (currentMenu == 3) { 
           if (cursorIndex == 0) {
-            // Save data into new data sheet
             if (fsOK) {
               LittleFS.remove("/data.csv");
               LittleFS.rename("/temp.csv", "/data.csv");
@@ -239,7 +288,6 @@ void loop() {
             currentMenu = 0;
             cursorIndex = 0;
           } else if (cursorIndex == 1) {
-            // Append data
             if (fsOK) {
               File tempFile = LittleFS.open("/temp.csv", "r");
               File mainFile = LittleFS.open("/data.csv", "a");
@@ -256,7 +304,6 @@ void loop() {
             currentMenu = 0;
             cursorIndex = 0;
           } else if (cursorIndex == 2) {
-            // Restart data sheet
             if (fsOK) {
               LittleFS.remove("/temp.csv");
               LittleFS.remove("/data.csv");
@@ -265,7 +312,6 @@ void loop() {
             currentMenu = 0;
             cursorIndex = 0;
           } else if (cursorIndex == 3) {
-            // Back option
             currentMenu = 0;
             cursorIndex = 0;
           }
@@ -276,8 +322,6 @@ void loop() {
   }
   lastButtonStateEnter = readingEnter;
 }
-
-
 
 // -------| Function Definitions |-------
 
@@ -304,7 +348,6 @@ void renderUI(void) {
   display.clearDisplay();
   
   if (currentMenu == 0) {
-    // HOME MENU
     display.setTextSize(2);
     display.setCursor(0, 0);
     display.println("DHT22");
@@ -323,8 +366,6 @@ void renderUI(void) {
     display.println(" File Options");
   } 
   else if (currentMenu == 1) {
-    // READING PAGE
-    // NEW CHANGE: Check if reading is stopped, display message if false
     if (!isReadingActive) {
       printCentered("Reading stopped", 28, 1);
     } else {
@@ -333,7 +374,6 @@ void renderUI(void) {
     }
   } 
   else if (currentMenu == 2) {
-    // HISTORY PAGE
     display.setTextSize(1);
     display.setCursor(0, 0);
     display.println("--- HISTORY ---");
@@ -354,7 +394,6 @@ void renderUI(void) {
     }
   } 
   else if (currentMenu == 3) {
-    // FILE OPTIONS MENU
     display.setTextSize(1);
     display.setCursor(0, 0);
     display.println("- FILE OPTIONS -");
@@ -385,7 +424,6 @@ int Gen_snpp(int type, char* destination, int size, float reading) {
   return -1; 
 }
 
-// Updated signature to accept string literals without type warnings
 void printCentered(const char* text, int y, unsigned int size) {
   int16_t x1, y1;
   uint16_t width, height;
@@ -421,6 +459,29 @@ void startDeepSleep(void) {
   esp_deep_sleep_start();
 }
 
+void handleFileDownload(void)
+{
+  if (LittleFS.exists("/data.csv")) {
+    File downloadFile = LittleFS.open("/data.csv", "r");
+    server.sendHeader("Content-Type", "text/csv");
+    server.sendHeader("Content-Disposition", "attachment; filename=data.csv");
+    server.sendHeader("Connection", "close");
+    server.streamFile(downloadFile, "text/csv");
+    downloadFile.close();
+  } else {
+    server.send(404, "text/plain", "No data.csv file found yet!");
+  }
+}
+
+void handleRoot(void)
+{
+  String html = "<html><body>";
+  html += "<h2>ESP32-C3 DHT22 Data Server</h2>";
+  html += "<p><a href='/download'><button style='font-size:18px; padding:10px;'>Download CSV File</button></a></p>";
+  html += "</body></html>";
+  server.send(200, "text/html", html);
+}
+
 void startAnimation(const char* label, int duration) {
   int barWidth = 100;
   int barHeight = 12;
@@ -453,7 +514,7 @@ void startAnimation(const char* label, int duration) {
   delay(200);
 }
 
-void shutdownAnimation() {
+void shutdownAnimation(void) {
   int centerX = SCREEN_WIDTH / 2;
   int centerY = SCREEN_HEIGHT / 2;
 
