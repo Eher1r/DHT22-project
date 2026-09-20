@@ -88,9 +88,9 @@ const unsigned long run = millis();
 const unsigned long reading_pause = 3000;
 unsigned long last_time = 0;
 
-// Wi-Fi Credentials
-const char* ssid = "wahyi";
-const char* password = "wahyi1007";
+// Hotspot Credentials
+const char* ap_ssid = "The_Great_Kaden_Server";
+const char* ap_password = "67676767";
 
 WebServer server(80); // Start HTTP web server on port 80
 
@@ -114,7 +114,7 @@ void setup() {
     Serial.println("LittleFS Mounted Successfully!");
   }
 
-  Serial.println("\n--- ESP32-C3 DHT22 Project Initialization ---");
+  Serial.println("\n--- Kaden's Great ESP32-C3 DHT22 Project ---");
   startAnimation("LOADING...", 2500);
 
   dht.begin();
@@ -124,37 +124,19 @@ void setup() {
   pinMode(BUTTON_DOWN, INPUT_PULLUP);
   pinMode(BUTTON_ENTER, INPUT_PULLUP);
 
-  // --- ESP32-C3 WI-FI CONFIGURATION ---
+  // --- DIRECT HOTSPOT (ACCESS POINT) MODE ---
   WiFi.persistent(false);              
-  WiFi.mode(WIFI_STA);                 
+  WiFi.mode(WIFI_AP);                 
   WiFi.setSleep(false);                
   WiFi.setTxPower(WIFI_POWER_8_5dBm);  
-  
-  WiFi.begin(ssid, password);
-  Serial.print("Connecting to WiFi");
-  
-  int wifiTimeout = 0;
-  while (WiFi.status() != WL_CONNECTED && wifiTimeout < 20) { 
-    delay(500);
-    Serial.print(".");
-    wifiTimeout++;
-  }
+  WiFi.softAP(ap_ssid, ap_password);
 
-  if (WiFi.status() == WL_CONNECTED) {
-    Serial.println("\nConnected to Home/Hotspot WiFi!");
-    Serial.print("IP Address: ");
-    Serial.println(WiFi.localIP());
-  } else {
-    Serial.println("\nSTA Connection failed! Switching to Access Point (Hotspot) Mode...");
-    WiFi.mode(WIFI_AP);
-    WiFi.softAP("ESP32_Data_Server", "12345678"); 
-    Serial.println("----------------------------------------------");
-    Serial.println("Hotspot Created Successfully!");
-    Serial.println("1. Connect your Mac Wi-Fi to: ESP32_Data_Server");
-    Serial.println("2. Password: 12345678");
-    Serial.println("3. Open browser and go to: http://192.168.4.1");
-    Serial.println("----------------------------------------------");
-  }
+  Serial.println("----------------------------------------------");
+  Serial.println("ESP32 Hotspot Started Successfully!");
+  Serial.println("1. Connect your device to Wi-Fi: The_Great_Kaden_Server");
+  Serial.println("2. Password: 67676767");
+  Serial.println("3. Open browser and go to: http://192.168.4.1");
+  Serial.println("----------------------------------------------");
 
   // Setup Web Server Routes
   server.on("/", handleRoot);
@@ -172,10 +154,7 @@ void setup() {
 
 void loop()
 {
-  if (WiFi.status() == WL_CONNECTED || WiFi.getMode() == WIFI_MODE_AP) {
-    server.handleClient();
-  }
-  
+  server.handleClient();
   button.tick();
 
   // --- DHT22 Reading Routine ---
@@ -290,7 +269,6 @@ void loop()
               File tempFile = LittleFS.open("/temp.csv", "r");
               File mainFile = LittleFS.open("/data.csv", "a");
               if (tempFile && mainFile) {
-                // If temp file contains header, skip line 1 when appending to existing main file
                 if (tempFile.available()) {
                   String firstLine = tempFile.readStringUntil('\n');
                   if (mainFile.size() == 0) {
@@ -328,6 +306,8 @@ void loop()
   lastButtonStateEnter = readingEnter;
 }
 
+
+
 // -------| Function Definitions |-------
 
 void recordData(float temp, float humidity, unsigned long timestamp) {
@@ -341,7 +321,6 @@ void recordData(float temp, float humidity, unsigned long timestamp) {
   bool exists = LittleFS.exists("/temp.csv");
   File file = LittleFS.open("/temp.csv", "a");
   if (file) {
-    // Automatically add CSV header if this is a newly created file
     if (!exists || file.size() == 0) {
       file.println("Timestamp(s),Temperature(C),Humidity(%)");
     }
@@ -473,7 +452,6 @@ void handleFileDownload(void)
 {
   String customFileName = "dht22_data.csv";
 
-  // Check if custom filename was submitted from HTML form
   if (server.hasArg("filename") && server.arg("filename").length() > 0) {
     customFileName = server.arg("filename");
     if (!customFileName.endsWith(".csv")) {
@@ -481,7 +459,6 @@ void handleFileDownload(void)
     }
   }
 
-  // Serve saved data file if available, otherwise active temp file
   String targetFilePath = "/data.csv";
   if (!LittleFS.exists(targetFilePath)) {
     if (LittleFS.exists("/temp.csv")) {
