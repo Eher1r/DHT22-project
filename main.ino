@@ -95,10 +95,9 @@ const char* password = "wahyi1007";
 WebServer server(80); // Start HTTP web server on port 80
 
 void setup() {
-  // FIX FOR ESP32-C3 NATIVE USB CDC SERIAL MONITOR
   Serial.begin(115200);
-  Serial.setTxTimeoutMs(0); // Prevents Serial.print blocking execution if terminal is closed
-  delay(2000);             // Give USB time to enumerate on Mac
+  Serial.setTxTimeoutMs(0); 
+  delay(2000);             
 
   Wire.begin(SDA_PIN, SCL_PIN);
   
@@ -125,7 +124,7 @@ void setup() {
   pinMode(BUTTON_DOWN, INPUT_PULLUP);
   pinMode(BUTTON_ENTER, INPUT_PULLUP);
 
-  // --- CRITICAL ESP32-C3 WI-FI FIXES ---
+  // --- ESP32-C3 WI-FI CONFIGURATION ---
   WiFi.persistent(false);              
   WiFi.mode(WIFI_STA);                 
   WiFi.setSleep(false);                
@@ -146,7 +145,6 @@ void setup() {
     Serial.print("IP Address: ");
     Serial.println(WiFi.localIP());
   } else {
-    // --- HOTSPOT FAILOVER MODE FOR ESP32-C3 ---
     Serial.println("\nSTA Connection failed! Switching to Access Point (Hotspot) Mode...");
     WiFi.mode(WIFI_AP);
     WiFi.softAP("ESP32_Data_Server", "12345678"); 
@@ -292,8 +290,15 @@ void loop()
               File tempFile = LittleFS.open("/temp.csv", "r");
               File mainFile = LittleFS.open("/data.csv", "a");
               if (tempFile && mainFile) {
-                while (tempFile.available()) {
-                  mainFile.write(tempFile.read());
+                // If temp file contains header, skip line 1 when appending to existing main file
+                if (tempFile.available()) {
+                  String firstLine = tempFile.readStringUntil('\n');
+                  if (mainFile.size() == 0) {
+                    mainFile.println(firstLine);
+                  }
+                  while (tempFile.available()) {
+                    mainFile.write(tempFile.read());
+                  }
                 }
               }
               if (tempFile) tempFile.close();
@@ -333,8 +338,13 @@ void recordData(float temp, float humidity, unsigned long timestamp) {
 
   if (!fsOK) return; 
 
+  bool exists = LittleFS.exists("/temp.csv");
   File file = LittleFS.open("/temp.csv", "a");
   if (file) {
+    // Automatically add CSV header if this is a newly created file
+    if (!exists || file.size() == 0) {
+      file.println("Timestamp(s),Temperature(C),Humidity(%)");
+    }
     file.print(timestamp);
     file.print(",");
     file.print(temp);
@@ -461,24 +471,58 @@ void startDeepSleep(void) {
 
 void handleFileDownload(void)
 {
-  if (LittleFS.exists("/data.csv")) {
-    File downloadFile = LittleFS.open("/data.csv", "r");
-    server.sendHeader("Content-Type", "text/csv");
-    server.sendHeader("Content-Disposition", "attachment; filename=data.csv");
-    server.sendHeader("Connection", "close");
-    server.streamFile(downloadFile, "text/csv");
-    downloadFile.close();
-  } else {
-    server.send(404, "text/plain", "No data.csv file found yet!");
+  String customFileName = "dht22_data.csv";
+
+  // Check if custom filename was submitted from HTML form
+  if (server.hasArg("filename") && server.arg("filename").length() > 0) {
+    customFileName = server.arg("filename");
+    if (!customFileName.endsWith(".csv")) {
+      customFileName += ".csv";
+    }
   }
+
+  // Serve saved data file if available, otherwise active temp file
+  String targetFilePath = "/data.csv";
+  if (!LittleFS.exists(targetFilePath)) {
+    if (LittleFS.exists("/temp.csv")) {
+      targetFilePath = "/temp.csv";
+    } else {
+      server.send(404, "text/plain", "No CSV data files found!");
+      return;
+    }
+  }
+
+  File downloadFile = LittleFS.open(targetFilePath, "r");
+  server.sendHeader("Content-Type", "text/csv");
+  server.sendHeader("Content-Disposition", "attachment; filename=\"" + customFileName + "\"");
+  server.sendHeader("Connection", "close");
+  server.streamFile(downloadFile, "text/csv");
+  downloadFile.close();
 }
 
 void handleRoot(void)
 {
-  String html = "<html><body>";
-  html += "<h2>ESP32-C3 DHT22 Data Server</h2>";
-  html += "<p><a href='/download'><button style='font-size:18px; padding:10px;'>Download CSV File</button></a></p>";
-  html += "</body></html>";
+  String html = "<!DOCTYPE html><html><head>";
+  html += "<meta name='viewport' content='width=device-width, initial-scale=1.0'>";
+  html += "<title>ESP32-C3 Data Server</title>";
+  html += "<style>";
+  html += "body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: #f4f6f8; margin: 0; padding: 40px 20px; display: flex; justify-content: center; }";
+  html += ".card { background: #ffffff; padding: 30px; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.08); max-width: 400px; width: 100%; text-align: center; }";
+  html += "h2 { color: #333; margin-top: 0; }";
+  html += "label { font-size: 14px; color: #666; display: block; margin-bottom: 8px; text-align: left; }";
+  html += "input[type='text'] { width: 100%; padding: 12px; border: 1px solid #ccc; border-radius: 6px; font-size: 16px; box-sizing: border-box; margin-bottom: 20px; }";
+  html += "button { background-color: #007aff; color: white; border: none; padding: 12px 20px; font-size: 16px; border-radius: 6px; cursor: pointer; width: 100%; font-weight: 600; }";
+  html += "button:hover { background-color: #0056b3; }";
+  html += "</style></head><body>";
+  html += "<div class='card'>";
+  html += "<h2>DHT22 CSV Export</h2>";
+  html += "<form action='/download' method='GET'>";
+  html += "<label for='filename'>Enter Download File Name:</label>";
+  html += "<input type='text' id='filename' name='filename' value='dht22_readings.csv' required>";
+  html += "<button type='submit'>Download CSV</button>";
+  html += "</form>";
+  html += "</div></body></html>";
+  
   server.send(200, "text/html", html);
 }
 
