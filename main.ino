@@ -35,9 +35,9 @@ void shutdownAnimation();
 
 // Buttons
 #define BUTTON_PIN1 7   // Toggle button (Switches between Menu and Reading)
-#define BUTTON_PIN2 0   // Sleep button
-#define BUTTON_UP 1     // UP button
-#define BUTTON_DOWN 2   // DOWN button
+#define BUTTON_PIN2 2   // Sleep button
+#define BUTTON_UP 0     // UP button
+#define BUTTON_DOWN 1   // DOWN button
 #define BUTTON_ENTER 10 // ENTER button
 
 DHT dht(DHTPIN, DHTTYPE);
@@ -87,6 +87,7 @@ unsigned long timeMaxHum = 0, timeMinHum = 0;
 const unsigned long run = millis();
 const unsigned long reading_pause = 3000;
 unsigned long last_time = 0;
+unsigned long startMillis = 0; // Tracks when the session started to keep timestamps zero-indexed
 
 // Hotspot Credentials
 const char* ap_ssid = "The_Great_Kaden_Server";
@@ -111,8 +112,12 @@ void setup() {
   if (!fsOK) {
     Serial.println("LittleFS Mount Failed! UI running without file storage.");
   } else {
-    Serial.println("LittleFS Mounted Successfully!");
+    Serial.println("LittleFS Mounted Successfully! Clearing old data for a fresh start...");
+    LittleFS.remove("/data.csv");
+    LittleFS.remove("/temp.csv");
   }
+
+  startMillis = millis(); // Reset timestamp offset on boot/wakeup
 
   Serial.println("\n--- Kaden's Great ESP32-C3 DHT22 Project ---");
   startAnimation("LOADING...", 2500);
@@ -162,7 +167,8 @@ void loop()
   error = false;
   if (isReadingActive && (current_time - last_time >= reading_pause)) {
     last_time = current_time;
-    unsigned int reading_time = current_time / 1000;
+    // Calculate elapsed time from the reset point
+    unsigned long reading_time = (current_time - startMillis) / 1000;
 
     float humidity = dht.readHumidity();
     float temp = dht.readTemperature();
@@ -199,7 +205,8 @@ void loop()
   }
   last_Button_State = readingToggle;
 
-  int maxCursor = (currentMenu == 3) ? 3 : 2;
+  // File menu now only has 2 options (0=Restart Data, 1=Back)
+  int maxCursor = (currentMenu == 3) ? 1 : 2;
 
   // --- BUTTON: UP ---
   int readingUp = digitalRead(BUTTON_UP);
@@ -256,45 +263,21 @@ void loop()
         } 
         // File Menu Actions
         else if (currentMenu == 3) { 
-          if (cursorIndex == 0) {
+          if (cursorIndex == 0) { // Restart Data
             if (fsOK) {
-              LittleFS.remove("/data.csv");
-              LittleFS.rename("/temp.csv", "/data.csv");
-              Serial.println("Saved into new data sheet!");
-            }
-            currentMenu = 0;
-            cursorIndex = 0;
-          } else if (cursorIndex == 1) {
-            if (fsOK) {
-              File tempFile = LittleFS.open("/temp.csv", "r");
-              File mainFile = LittleFS.open("/data.csv", "a");
-              if (tempFile && mainFile) {
-                if (tempFile.available()) {
-                  String firstLine = tempFile.readStringUntil('\n');
-                  if (mainFile.size() == 0) {
-                    mainFile.println(firstLine);
-                  }
-                  while (tempFile.available()) {
-                    mainFile.write(tempFile.read());
-                  }
-                }
-              }
-              if (tempFile) tempFile.close();
-              if (mainFile) mainFile.close();
-              LittleFS.remove("/temp.csv");
-              Serial.println("Appended data to data sheet!");
-            }
-            currentMenu = 0;
-            cursorIndex = 0;
-          } else if (cursorIndex == 2) {
-            if (fsOK) {
-              LittleFS.remove("/temp.csv");
               LittleFS.remove("/data.csv");
               Serial.println("Data sheets cleared!");
             }
+            // Reset timing and history tracking
+            startMillis = millis(); 
+            maxTemp = -999.0; minTemp = 999.0;
+            maxHum = -999.0; minHum = 999.0;
+            timeMaxTemp = 0; timeMinTemp = 0;
+            timeMaxHum = 0; timeMinHum = 0;
+
             currentMenu = 0;
             cursorIndex = 0;
-          } else if (cursorIndex == 3) {
+          } else if (cursorIndex == 1) { // Back
             currentMenu = 0;
             cursorIndex = 0;
           }
@@ -318,8 +301,8 @@ void recordData(float temp, float humidity, unsigned long timestamp) {
 
   if (!fsOK) return; 
 
-  bool exists = LittleFS.exists("/temp.csv");
-  File file = LittleFS.open("/temp.csv", "a");
+  bool exists = LittleFS.exists("/data.csv");
+  File file = LittleFS.open("/data.csv", "a");
   if (file) {
     if (!exists || file.size() == 0) {
       file.println("Timestamp(s),Temperature(C),Humidity(%)");
@@ -370,13 +353,13 @@ void renderUI(void) {
     char buffer[32];
     display.setCursor(0, 16);
     if (maxTemp != -999.0) {
-      sprintf(buffer, "MaxT:%.1fC @%lds", maxTemp, timeMaxTemp);
+      sprintf(buffer, "MaxT:%.1fC @%lus", maxTemp, timeMaxTemp);
       display.println(buffer);
-      sprintf(buffer, "MinT:%.1fC @%lds", minTemp, timeMinTemp);
+      sprintf(buffer, "MinT:%.1fC @%lus", minTemp, timeMinTemp);
       display.println(buffer);
-      sprintf(buffer, "MaxH:%.1f%% @%lds", maxHum, timeMaxHum);
+      sprintf(buffer, "MaxH:%.1f%% @%lus", maxHum, timeMaxHum);
       display.println(buffer);
-      sprintf(buffer, "MinH:%.1f%% @%lds", minHum, timeMinHum);
+      sprintf(buffer, "MinH:%.1f%% @%lus", minHum, timeMinHum);
       display.println(buffer);
     } else {
       display.println("No data recorded.");
@@ -386,21 +369,13 @@ void renderUI(void) {
     display.setTextSize(1);
     display.setCursor(0, 0);
     display.println("- FILE OPTIONS -");
-
+    
     display.setCursor(0, 16);
     if (cursorIndex == 0) display.print(">"); else display.print(" ");
-    display.println(" Save New Data");
-    
-    display.setCursor(0, 28);
-    if (cursorIndex == 1) display.print(">"); else display.print(" ");
-    display.println(" Append Data");
-    
-    display.setCursor(0, 40);
-    if (cursorIndex == 2) display.print(">"); else display.print(" ");
     display.println(" Restart Data");
 
-    display.setCursor(0, 52);
-    if (cursorIndex == 3) display.print(">"); else display.print(" ");
+    display.setCursor(0, 28);
+    if (cursorIndex == 1) display.print(">"); else display.print(" ");
     display.println(" Back");
   }
   
@@ -461,12 +436,8 @@ void handleFileDownload(void)
 
   String targetFilePath = "/data.csv";
   if (!LittleFS.exists(targetFilePath)) {
-    if (LittleFS.exists("/temp.csv")) {
-      targetFilePath = "/temp.csv";
-    } else {
-      server.send(404, "text/plain", "No CSV data files found!");
-      return;
-    }
+    server.send(404, "text/plain", "No CSV data files found!");
+    return;
   }
 
   File downloadFile = LittleFS.open(targetFilePath, "r");
@@ -495,7 +466,7 @@ void handleRoot(void)
   html += "<h2>DHT22 CSV Export</h2>";
   html += "<form action='/download' method='GET'>";
   html += "<label for='filename'>Enter Download File Name:</label>";
-  html += "<input type='text' id='filename' name='filename' value='dht22_readings.csv' required>";
+  html += "<input type='text' id='filename' name='filename' value='67readings.csv' required>";
   html += "<button type='submit'>Download CSV</button>";
   html += "</form>";
   html += "</div></body></html>";
