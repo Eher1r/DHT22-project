@@ -2,13 +2,13 @@
 #include <Adafruit_SSD1306.h>
 #include <Arduino.h>
 #include <DHT.h>
+#include <LittleFS.h>
 #include <OneButton.h>
 #include <Wire.h>
-#include <LittleFS.h> // Added for local file storage
 
 // Prototypes
 int Gen_snpp(int type, char* destination, int size, float reading);
-void printCentered(char* text, int y, unsigned int size);
+void printCentered(const char* text, int y, unsigned int size);
 int update_Toggle(int num);
 void display012(void);
 void renderUI(void);
@@ -40,7 +40,7 @@ DHT dht(DHTPIN, DHTTYPE);
 Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
 OneButton button(BUTTON_PIN2, true);
 
-// Global Variables (Original Display Strings & State)
+// Global Variables
 char resultH[32];
 char resultT[32];
 bool error;
@@ -48,12 +48,14 @@ int button_State = HIGH;
 int last_Button_State = HIGH;
 unsigned long last_Click_Time = 0;
 const unsigned long click_Delay = 50;
-int button_Toggle = 0;
 
-// LittleFS Mount Status Guard (Prevents Kernel Crash/Reboot Loop)
+// Set default display mode to 0 (Both Temp & Humidity displayed)
+int button_Toggle = 0; 
+
+// LittleFS Mount Guard Flag
 bool fsOK = false;
 
-// Button Debounce Variables (Following Accepted Template Format)
+// Button Debounce Variables
 int buttonStateUp = HIGH;
 int lastButtonStateUp = HIGH;
 unsigned long lastDebounceTimeUp = 0;
@@ -66,12 +68,12 @@ int buttonStateEnter = HIGH;
 int lastButtonStateEnter = HIGH;
 unsigned long lastDebounceTimeEnter = 0;
 
-// UI & Navigation State Variables
+// UI & Navigation State
 int currentMenu = 0; // 0 = Home Menu, 1 = Reading Page, 2 = History, 3 = File Options
-int cursorIndex = 0; // 0, 1, or 2 depending on selected item
+int cursorIndex = 0; 
 bool isReadingActive = true;
 
-// Min/Max History Data
+// History Data
 float maxTemp = -999.0, minTemp = 999.0;
 float maxHum = -999.0, minHum = 999.0;
 unsigned long timeMaxTemp = 0, timeMinTemp = 0;
@@ -91,7 +93,6 @@ void setup() {
     delay(100);
   }
 
-  // Explicitly initialize I2C bus before display bring-up
   Wire.begin(SDA_PIN, SCL_PIN);
   
   if (!display.begin(SSD1306_SWITCHCAPVCC, SCREEN_ADDRESS)) {
@@ -99,10 +100,10 @@ void setup() {
     for (;;);
   }
 
-  // Safely mount LittleFS without triggering system panics
+  // LittleFS initialization
   fsOK = LittleFS.begin(true);
   if (!fsOK) {
-    Serial.println("LittleFS Mount Failed! UI running without storage writes.");
+    Serial.println("LittleFS Mount Failed! UI running without file storage.");
   } else {
     Serial.println("LittleFS Mounted Successfully!");
   }
@@ -112,13 +113,11 @@ void setup() {
 
   dht.begin();
   
-  // Pin Modes
   pinMode(BUTTON_PIN1, INPUT_PULLUP);
   pinMode(BUTTON_UP, INPUT_PULLUP);
   pinMode(BUTTON_DOWN, INPUT_PULLUP);
   pinMode(BUTTON_ENTER, INPUT_PULLUP);
 
-  // Set default text colors (Foreground, Background to clear previous text artifacts)
   display.setTextColor(SSD1306_WHITE, SSD1306_BLACK);
   button.setPressMs(3000);
   button.attachLongPressStart(startDeepSleep);
@@ -135,7 +134,7 @@ void loop() {
   error = false;
   if (isReadingActive && (current_time - last_time >= reading_pause)) {
     last_time = current_time;
-    unsigned int reading_time = current_time / 1000; // Time in seconds
+    unsigned int reading_time = current_time / 1000;
 
     float humidity = dht.readHumidity();
     float temp = dht.readTemperature();
@@ -147,7 +146,7 @@ void loop() {
       Gen_snpp(1, resultT, sizeof(resultT), temp);
       recordData(temp, humidity, reading_time);
     }
-    if (currentMenu == 1) renderUI(); // Refresh screen if on Reading Page
+    if (currentMenu == 1) renderUI();
   }
 
   // --- BUTTON 1: TOGGLE (Home Menu <-> Reading Page) ---
@@ -160,10 +159,10 @@ void loop() {
       button_State = readingToggle;
       if (button_State == LOW) {
         if (currentMenu == 1) {
-          currentMenu = 0; // Return to Home Menu
+          currentMenu = 0; // Go back to Home Menu
         } else {
           currentMenu = 1; // Open Reading Page
-          button_Toggle = update_Toggle(button_Toggle);
+          button_Toggle = 0; 
         }
         cursorIndex = 0;
         renderUI();
@@ -171,6 +170,9 @@ void loop() {
     }
   }
   last_Button_State = readingToggle;
+
+  // Dynamic cursor bounds (Home Menu: 0-2; File Options: 0-3)
+  int maxCursor = (currentMenu == 3) ? 3 : 2;
 
   // --- BUTTON: UP ---
   int readingUp = digitalRead(BUTTON_UP);
@@ -180,7 +182,7 @@ void loop() {
       buttonStateUp = readingUp;
       if (buttonStateUp == LOW) {
         cursorIndex--;
-        if (cursorIndex < 0) cursorIndex = 2; // Wrap around bottom option
+        if (cursorIndex < 0) cursorIndex = maxCursor;
         renderUI();
       }
     }
@@ -195,7 +197,7 @@ void loop() {
       buttonStateDown = readingDown;
       if (buttonStateDown == LOW) {
         cursorIndex++;
-        if (cursorIndex > 2) cursorIndex = 0; // Wrap around top option
+        if (cursorIndex > maxCursor) cursorIndex = 0;
         renderUI();
       }
     }
@@ -210,32 +212,34 @@ void loop() {
       buttonStateEnter = readingEnter;
       if (buttonStateEnter == LOW) {
         
-        // --- HOME MENU ACTIONS ---
+        // Home Menu Actions
         if (currentMenu == 0) { 
           if (cursorIndex == 0) {
-            isReadingActive = !isReadingActive; // Toggle DHT22 state
+            isReadingActive = !isReadingActive;
           } else if (cursorIndex == 1) {
-            currentMenu = 2; // Navigate to History
+            currentMenu = 2; // Go to History Page
           } else if (cursorIndex == 2) {
-            currentMenu = 3; // Navigate to File Options
+            currentMenu = 3; // Go to File Options Menu
             cursorIndex = 0; 
           }
         } 
-        // --- HISTORY MENU ACTIONS ---
+        // History Page Action
         else if (currentMenu == 2) { 
-          currentMenu = 0; // Return to Home
+          currentMenu = 0; // Any Enter press returns to Home Menu
         } 
-        // --- FILE MENU ACTIONS ---
+        // File Menu Actions
         else if (currentMenu == 3) { 
           if (cursorIndex == 0) {
-            // Option 1: Save data into new data sheet
+            // Save data into new data sheet
             if (fsOK) {
               LittleFS.remove("/data.csv");
               LittleFS.rename("/temp.csv", "/data.csv");
-              Serial.println("Saved into new data sheet & sent via WiFi/BLE!");
+              Serial.println("Saved into new data sheet!");
             }
+            currentMenu = 0;
+            cursorIndex = 0;
           } else if (cursorIndex == 1) {
-            // Option 2: Append current data to data sheet
+            // Append data
             if (fsOK) {
               File tempFile = LittleFS.open("/temp.csv", "r");
               File mainFile = LittleFS.open("/data.csv", "a");
@@ -247,18 +251,24 @@ void loop() {
               if (tempFile) tempFile.close();
               if (mainFile) mainFile.close();
               LittleFS.remove("/temp.csv");
-              Serial.println("Appended new data to data sheet & sent!");
+              Serial.println("Appended data to data sheet!");
             }
+            currentMenu = 0;
+            cursorIndex = 0;
           } else if (cursorIndex == 2) {
-            // Option 3: Clear all data and start over
+            // Restart data sheet
             if (fsOK) {
               LittleFS.remove("/temp.csv");
               LittleFS.remove("/data.csv");
-              Serial.println("Data sheet cleared and restarted!");
+              Serial.println("Data sheets cleared!");
             }
+            currentMenu = 0;
+            cursorIndex = 0;
+          } else if (cursorIndex == 3) {
+            // Back option
+            currentMenu = 0;
+            cursorIndex = 0;
           }
-          currentMenu = 0; // Return to Home
-          cursorIndex = 0;
         }
         renderUI();
       }
@@ -272,13 +282,11 @@ void loop() {
 // -------| Function Definitions |-------
 
 void recordData(float temp, float humidity, unsigned long timestamp) {
-  // Update RAM Min/Max History
   if (temp > maxTemp) { maxTemp = temp; timeMaxTemp = timestamp; }
   if (temp < minTemp) { minTemp = temp; timeMinTemp = timestamp; }
   if (humidity > maxHum) { maxHum = humidity; timeMaxHum = timestamp; }
   if (humidity < minHum) { minHum = humidity; timeMinHum = timestamp; }
 
-  // Prevent file operations if LittleFS failed to mount
   if (!fsOK) return; 
 
   File file = LittleFS.open("/temp.csv", "a");
@@ -315,14 +323,13 @@ void renderUI(void) {
     display.println(" File Options");
   } 
   else if (currentMenu == 1) {
-    // READING PAGE (Original code functionality)
-    if (button_Toggle == 0) {
+    // READING PAGE
+    // NEW CHANGE: Check if reading is stopped, display message if false
+    if (!isReadingActive) {
+      printCentered("Reading stopped", 28, 1);
+    } else {
       printCentered(resultH, 22, 1);
       printCentered(resultT, 34, 1);
-    } else if (button_Toggle == 1) {
-      printCentered(resultT, 28, 1);
-    } else if (button_Toggle == 2) {
-      printCentered(resultH, 28, 1);
     }
   } 
   else if (currentMenu == 2) {
@@ -352,17 +359,21 @@ void renderUI(void) {
     display.setCursor(0, 0);
     display.println("- FILE OPTIONS -");
 
-    display.setCursor(0, 24);
+    display.setCursor(0, 16);
     if (cursorIndex == 0) display.print(">"); else display.print(" ");
     display.println(" Save New Data");
     
-    display.setCursor(0, 36);
+    display.setCursor(0, 28);
     if (cursorIndex == 1) display.print(">"); else display.print(" ");
     display.println(" Append Data");
     
-    display.setCursor(0, 48);
+    display.setCursor(0, 40);
     if (cursorIndex == 2) display.print(">"); else display.print(" ");
     display.println(" Restart Data");
+
+    display.setCursor(0, 52);
+    if (cursorIndex == 3) display.print(">"); else display.print(" ");
+    display.println(" Back");
   }
   
   display.display();
@@ -374,11 +385,12 @@ int Gen_snpp(int type, char* destination, int size, float reading) {
   return -1; 
 }
 
-void printCentered(char* text, int y, unsigned int size) {
+// Updated signature to accept string literals without type warnings
+void printCentered(const char* text, int y, unsigned int size) {
   int16_t x1, y1;
   uint16_t width, height;
   display.setTextSize(size);
-  display.getTextBounds(text, 0, 0, &x1, &y1, &width, &height);
+  display.getTextBounds((char*)text, 0, 0, &x1, &y1, &width, &height);
   int x = (SCREEN_WIDTH - width) / 2;
   display.setCursor(x, y);
   display.print(text);
@@ -425,7 +437,7 @@ void startAnimation(const char* label, int duration) {
     
     int16_t x1, y1;
     uint16_t w, h;
-    display.getTextBounds(label, 0, 0, &x1, &y1, &w, &h);
+    display.getTextBounds((char*)label, 0, 0, &x1, &y1, &w, &h);
     display.setCursor((SCREEN_WIDTH - w) / 2, 16);
     display.print(label);
 
